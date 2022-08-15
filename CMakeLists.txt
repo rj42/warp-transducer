@@ -45,7 +45,6 @@ if (WITH_OMP)
 endif()
 
 # need to be at least 30 or __shfl_down in reduce wont compile
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_30,code=sm_30 -O2")
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_35,code=sm_35")
 
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_50,code=sm_50")
@@ -66,6 +65,14 @@ ENDIF()
 
 IF (CUDA_VERSION GREATER 9.9)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_75,code=sm_75")
+ENDIF()
+
+IF (CUDA_VERSION EQUAL 11)
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -arch=sm_52 -gencode=arch=compute_80,code=sm_80")
+ENDIF()
+
+IF (CUDA_VERSION GREATER 11)
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -arch=sm_80 -gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_86,code=compute_86")
 ENDIF()
 
 if (NOT APPLE)
@@ -94,6 +101,7 @@ ENDIF()
 IF (WITH_GPU)
 
     MESSAGE(STATUS "Building shared library with GPU support")
+    set(CUDA_curand_LIBRARY "/usr/local/cuda/lib64/libcurand.so.10")
 
     CUDA_ADD_LIBRARY(warprnnt SHARED src/rnnt_entrypoint.cu)
     IF (!Torch_FOUND)
