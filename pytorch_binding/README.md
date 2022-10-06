@@ -74,10 +74,11 @@ loss.backward()
 ## Documentation
 
 ```python
-RNNTLoss(size_average=True, blank_label=0):
+RNNTLoss(size_average=True, blank_label=0, fastemit_lambda=0):
     """
     size_average (bool): normalize the loss by the batch size (default: True)
     blank_label (int): blank label index
+    fastemit_lambda (float): FastEmit regularization (https://arxiv.org/abs/2010.11148)
     """
 
 forward(acts, labels, act_lens, label_lens):

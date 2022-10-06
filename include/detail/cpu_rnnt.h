@@ -19,10 +19,18 @@ template<typename ProbT>
 class CpuRNNT {
 public:
     // Noncopyable
-    CpuRNNT(int minibatch, int maxT, int maxU, int alphabet_size, void* workspace, 
-            int blank, int num_threads, bool batch_first) :
-        minibatch_(minibatch), maxT_(maxT), maxU_(maxU), alphabet_size_(alphabet_size), 
-        workspace_(workspace), blank_(blank), num_threads_(num_threads), batch_first(batch_first) {
+    CpuRNNT(int minibatch, int maxT, int maxU, int alphabet_size, void* workspace,
+            int blank, float fastemit_lambda, int num_threads, bool batch_first)
+    : minibatch_(minibatch)
+    , maxT_(maxT)
+    , maxU_(maxU)
+    , alphabet_size_(alphabet_size)
+    , workspace_(workspace)
+    , blank_(blank)
+    , fastemit_lambda_(fastemit_lambda)
+    , num_threads_(num_threads)
+    , batch_first(batch_first)
+{
 #if defined(RNNT_DISABLE_OMP) || defined(APPLE)
 #else
         if (num_threads > 0) {
@@ -82,6 +90,7 @@ private:
     int alphabet_size_; // Number of characters plus blank
     void* workspace_;
     int blank_;
+    float fastemit_lambda_;
     int num_threads_;
     bool batch_first;
     
@@ -128,7 +137,7 @@ CpuRNNT<ProbT>::CpuRNNT_metadata::setup_probs(int T, int U, const int* const lab
 }
 
 template<typename ProbT>
-CpuRNNT<ProbT>::CpuRNNT_index::CpuRNNT_index(int U, int maxU, int minibatch, int alphabet_size, bool batch_first) : 
+CpuRNNT<ProbT>::CpuRNNT_index::CpuRNNT_index(int U, int maxU, int minibatch, int alphabet_size, bool batch_first) :
                     U(U), maxU(maxU), minibatch(minibatch), alphabet_size(alphabet_size), batch_first(batch_first) {}
 
 template<typename ProbT>
@@ -175,7 +184,6 @@ CpuRNNT<ProbT>::cost_and_grad_kernel(const ProbT* const log_probs, ProbT* grad,
 template<typename ProbT>
 ProbT
 CpuRNNT<ProbT>::compute_alphas(const ProbT* const log_probs, int T, int U, ProbT* alphas) {
-
     CpuRNNT_index idx(U, maxU_, minibatch_, alphabet_size_, batch_first);
 
     alphas[0] = 0;
@@ -259,13 +267,12 @@ CpuRNNT<ProbT>::compute_betas_and_grad(ProbT* grad, const ProbT* const log_probs
             }
             if (u < U-1) {
                 ProbT g = alphas[idx(t, u)] + betas[idx(t, u+1)];
-                grad[idx(t, u, labels[u])] = -std::exp(log_probs[idx(t, u) * 2 + 1] + g - loglike);
+                grad[idx(t, u, labels[u])] = -std::exp(log_probs[idx(t, u) * 2 + 1] + g - loglike) * (1 + fastemit_lambda_);
             }
         }
     }
     // gradient to the last blank transition
     grad[idx(T-1, U-1, blank_)] = -std::exp(log_probs[idx(T-1, U-1) * 2] + alphas[idx(T-1, U-1)] - loglike);
-
     return loglike;
 }
 

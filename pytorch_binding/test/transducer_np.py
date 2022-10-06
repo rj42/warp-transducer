@@ -10,7 +10,6 @@ def _assert_no_grad(tensor):
 
 
 def forward_pass(log_probs, labels, blank):
-
     T, U, _ = log_probs.shape
     alphas = np.zeros((T, U), dtype='f')
 
@@ -29,7 +28,6 @@ def forward_pass(log_probs, labels, blank):
     return alphas, loglike
 
 def backward_pass(log_probs, labels, blank):
-
     T, U, _ = log_probs.shape
     betas = np.zeros((T, U), dtype='f')
     betas[T-1, U-1] = log_probs[T-1, U-1, blank]
@@ -48,21 +46,27 @@ def backward_pass(log_probs, labels, blank):
 
     return betas, betas[0, 0]
 
-def compute_gradient(log_probs, alphas, betas, labels, blank):
+def compute_gradient(log_probs, alphas, betas, labels, blank, fastemit_lambda):
     T, U, _ = log_probs.shape
     grads = np.full(log_probs.shape, -float("inf"))
     log_like = betas[0, 0]
 
     grads[T-1, U-1, blank] = alphas[T-1, U-1]
-
     grads[:T-1, :, blank] = alphas[:T-1, :] + betas[1:, :]
+
     for u, l in enumerate(labels):
         grads[:, u, l] = alphas[:, u] + betas[:, u+1]
 
     grads = -np.exp(grads + log_probs - log_like)
+
+    # FastEmit regularization (https://arxiv.org/abs/2010.11148).
+    if fastemit_lambda != 0:
+        for u, l in enumerate(labels):
+            grads[:, u, l] = (1.0 + fastemit_lambda) * grads[:, u, l]
+
     return grads
 
-def transduce(log_probs, labels, blank=0):
+def transduce(log_probs, labels, blank=0, fastemit_lambda=0):
     """
     Args:
         log_probs: 3D array with shape
@@ -75,17 +79,17 @@ def transduce(log_probs, labels, blank=0):
     """
     alphas, ll_forward = forward_pass(log_probs, labels, blank)
     betas, ll_backward = backward_pass(log_probs, labels, blank)
-    grads = compute_gradient(log_probs, alphas, betas, labels, blank)
+    grads = compute_gradient(log_probs, alphas, betas, labels, blank, fastemit_lambda)
     return -ll_forward, grads
 
-def transduce_batch(log_probs, labels, flen, glen, blank=0):
+def transduce_batch(log_probs, labels, flen, glen, blank=0, fastemit_lambda=0):
     grads = np.zeros_like(log_probs)
     costs = []
     # TODO parallel loop
     for b in range(log_probs.shape[0]):
         t = int(flen[b])
         u = int(glen[b]) + 1
-        ll, g = transduce(log_probs[b, :t, :u, :], labels[b, :u-1], blank)
+        ll, g = transduce(log_probs[b, :t, :u, :], labels[b, :u-1], blank, fastemit_lambda=0)
         grads[b, :t, :u, :] = g
         costs.append(ll)
     return costs, grads
@@ -99,10 +103,9 @@ class _RNNT(Function):
 
         costs = torch.FloatTensor([sum(costs)])
         grads = torch.Tensor(grads).to(acts)
-        
         ctx.grads = Variable(grads)
         return costs
-    
+
     @staticmethod
     def backward(ctx, grad_output):
         return ctx.grads, None, None, None
@@ -117,7 +120,7 @@ class RNNTLoss(Module):
     def __init__(self):
         super(RNNTLoss, self).__init__()
         self.rnnt = _RNNT.apply
-    
+
     def forward(self, acts, labels, act_lens, label_lens):
         assert len(labels.size()) == 2
         _assert_no_grad(labels)

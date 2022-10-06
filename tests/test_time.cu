@@ -55,6 +55,7 @@ bool run_test(int B, int T, int L, int A, int num_threads) {
     options.maxT = T;
     options.maxU = L + 1;
     options.blank_label = 0;
+    options.fastemit_lambda = 0;
     options.loc = RNNT_GPU;
     cudaStream_t stream;
     cudaStreamCreate(&stream);

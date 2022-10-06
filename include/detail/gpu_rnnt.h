@@ -19,10 +19,18 @@ template<typename ProbT>
 class GpuRNNT {
 public:
     // Noncopyable
-    GpuRNNT(int minibatch, int maxT, int maxU, int alphabet_size, void* workspace, 
-            int blank, int num_threads, CUstream stream) :
-        minibatch_(minibatch), maxT_(maxT), maxU_(maxU), alphabet_size_(alphabet_size), 
-        gpu_workspace(workspace), blank_(blank), num_threads_(num_threads), stream_(stream) {
+    GpuRNNT(int minibatch, int maxT, int maxU, int alphabet_size, void* workspace,
+            int blank, float fastemit_lambda, int num_threads, CUstream stream) 
+    : minibatch_(minibatch)
+    , maxT_(maxT)
+    , maxU_(maxU)
+    , alphabet_size_(alphabet_size)
+    , gpu_workspace(workspace)
+    , blank_(blank)
+    , fastemit_lambda_(fastemit_lambda)
+    , num_threads_(num_threads)
+    , stream_(stream)
+{
 #if defined(RNNT_DISABLE_OMP) || defined(APPLE)
 #else
         if (num_threads > 0) {
@@ -65,6 +73,7 @@ private:
     int alphabet_size_; // Number of characters plus blank
     void* gpu_workspace;
     int blank_;
+    float fastemit_lambda_;
     int num_threads_;
     CUstream stream_;
     
@@ -73,7 +82,6 @@ private:
 template<typename ProbT>
 void
 GpuRNNT<ProbT>::log_softmax(const ProbT* const acts, ProbT* denom) {
-
     // trans_acts + pred_acts -> log_softmax denominator
     reduce_max(acts, denom, alphabet_size_, minibatch_ * maxT_ * maxU_, 0, stream_);
     reduce_exp(acts, denom, alphabet_size_, minibatch_ * maxT_ * maxU_, 1, stream_);
@@ -195,9 +203,9 @@ GpuRNNT<ProbT>::compute_cost_and_score(const ProbT* const acts,
         start = std::chrono::high_resolution_clock::now();
 #endif
         // TODO optimize gradient kernel
-        compute_grad_kernel<128, ProbT><<<minibatch_ * maxT_ * maxU_, 128, 0, stream_>>>(grads, 
+        compute_grad_kernel<128, ProbT><<<minibatch_ * maxT_ * maxU_, 128, 0, stream_>>>(grads,
             acts, denom, alphas, betas, llForward, input_lengths, label_lengths, labels, 
-            minibatch_, maxT_, maxU_, alphabet_size_, blank_);
+            minibatch_, maxT_, maxU_, alphabet_size_, blank_, fastemit_lambda_);
 #if defined(DEBUG_TIME)
         cudaStreamSynchronize(stream_);
         end = std::chrono::high_resolution_clock::now();
@@ -224,7 +232,7 @@ GpuRNNT<ProbT>::cost_and_grad(const ProbT* const acts,
                        const int* const input_lengths) {
 
     if (acts == nullptr ||
-        grads == nullptr || 
+        grads == nullptr ||
         costs == nullptr ||
         pad_labels == nullptr ||
         label_lengths == nullptr ||

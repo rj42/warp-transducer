@@ -53,6 +53,9 @@ struct rnntOptions {
     /// the label value/index that the RNNT calculation should use as the blank label
     int blank_label;
 
+    /// FastEmit regularization (https://arxiv.org/abs/2010.11148)
+    float fastemit_lambda;
+
     /// the maximum length of time steps
     int maxT;
 

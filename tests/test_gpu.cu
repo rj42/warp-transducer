@@ -44,6 +44,7 @@ bool small_test() {
     options.maxU = U;
     options.loc = RNNT_GPU;
     options.blank_label = 0;
+    options.fastemit_lambda = 0;
     cudaStream_t stream;
     cudaStreamCreate(&stream);
     options.stream = stream;

@@ -16,6 +16,7 @@ int cpu_rnnt(torch::Tensor acts,
             torch::Tensor costs,
             torch::Tensor grads,
             int blank_label,
+            float fastemit_lambda,
             int num_threads) {
 
     int maxT = acts.size(0);
@@ -34,6 +35,7 @@ int cpu_rnnt(torch::Tensor acts,
     options.maxT = maxT;
     options.maxU = maxU;
     options.blank_label = blank_label;
+    options.fastemit_lambda = fastemit_lambda;
     options.batch_first = true;
     options.loc = RNNT_CPU;
     options.num_threads = num_threads;
@@ -88,6 +90,7 @@ int gpu_rnnt(torch::Tensor acts,
             torch::Tensor costs,
             torch::Tensor grads,
             int blank_label,
+            float fastemit_lambda,
             int num_threads) {
 
     int minibatch_size = acts.size(0);
@@ -100,6 +103,7 @@ int gpu_rnnt(torch::Tensor acts,
     options.maxT = maxT;
     options.maxU = maxU;
     options.blank_label = blank_label;
+    options.fastemit_lambda = fastemit_lambda;
     options.loc = RNNT_GPU;
     options.stream = at::cuda::getCurrentCUDAStream();
     options.num_threads = num_threads;

@@ -142,7 +142,7 @@ __global__ void compute_betas_kernel_naive(const Tp* const acts, const Tp* const
 
 template<int NT, typename Tp>
 __global__ void compute_grad_kernel(Tp* grads, const Tp* const acts, const Tp* const denom, const Tp* alphas, const Tp* betas, const Tp* const logll, const int* const xlen, const int* const ylen, 
-    const int* const mlabels, const int minibatch, const int maxT, const int maxU, const int alphabet_size, const int blank_) {
+    const int* const mlabels, const int minibatch, const int maxT, const int maxU, const int alphabet_size, const int blank_, const float fastemit_lambda_) {
     int tid = threadIdx.x; // alphabet dim
     int idx = tid;
     int col = blockIdx.x; // mb, t, u
@@ -156,20 +156,52 @@ __global__ void compute_grad_kernel(Tp* grads, const Tp* const acts, const Tp* c
     const int U = ylen[mb] + 1;
     const int* labels = mlabels + mb * (maxU - 1);
 
+    // See: https://github.com/titu1994/warprnnt_numba/blob/b1bc81e02dfb05143c3d55ac7b50c8131e85b194/warprnnt_numba/rnnt_loss/utils/cuda_utils/gpu_rnnt_kernel.py#L264
+    //
     if (t < T && u < U) {
         while (idx < alphabet_size) {
             Tp logpk = denom[col] + acts[col * alphabet_size + idx];
             // Tp logpk = logp(denom, acts, maxT, maxU, alphabet_size, mb, t, u, idx);
+            // logpk = denom[b, t, u] + acts[b, t, u, v]
             Tp grad = exp(alphas[col] + betas[col] + logpk - logll[mb]);
+
+            Tp fastemit_grad = 0.0;
+            if (fastemit_lambda_ != 0.0 && u < U - 1) {
+                // If FastEmit regularization is enabled, calculate the gradient of probability of predicting the next label
+                // at the current timestep.
+                // The formula for this is Equation 9 in https://arxiv.org/abs/2010.11148, multiplied by the log probability
+                // of the current step (t, u), normalized by the total log likelihood.
+                // Once the gradient has been calculated, scale it by `fastemit_lambda`, as in Equation 10.
+                fastemit_grad = fastemit_lambda_ * exp(
+                    alphas[col]  // alphas(t, u)
+                    + (denom[col] + acts[col * alphabet_size + labels[u]])  // y_hat(t, u)
+                    + betas[col + 1]  // betas(t, u+1)
+                    + logpk  // log Pr(k|t, u)
+                    - logll[mb]  // total log likelihood for normalization
+                );
+
+                // Update the gradient of act[b, t, u, v] with the gradient from FastEmit regularization
+                grad += fastemit_grad;
+            }
+
             // grad to last blank transition
+            // grad[b, T-1, U-1, v=blank] -= exp(alphas[b, t, u) + logpk - logll[b])
             if (idx == blank_ && t == T-1 && u == U-1) {
                 grad -= exp(alphas[col] + logpk - logll[mb]);
             }
+
+            // grad[b, t<T-1, u, v=blank] -= exp(alphas[b, t, u] + logpk - logll[b] betas[b, t + 1, u])
             if (idx == blank_ && t < T-1) {
                 grad -= exp(alphas[col] + logpk - logll[mb] + betas[col + maxU]);
             }
+
+            // grad of correct token across u < U;
+            // grad[b, t, u<U-1, v=label[u]] -= exp(alphas[b, t, u] + logpk - logll[b] + betas[b, t, u+1])
+            // Scale the gradient by (1.0 + FastEmit_lambda) in log space, then exponentiate
             if (u < U-1 && idx == labels[u]) {
-                grad -= exp(alphas[col] + logpk - logll[mb] + betas[col+1]);
+                // exp(log(1 + fastemit_lambda) + ...) is numerically more stable than
+                // multiplying (1.0 + fastemit_lambda) with result.
+                grad -= exp(log1p(fastemit_lambda_) + alphas[col] + logpk - logll[mb] + betas[col+1]);
             }
             grads[col * alphabet_size + idx] = grad;
 

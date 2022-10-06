@@ -39,6 +39,7 @@ bool small_test() {
     options.loc = RNNT_CPU;
     options.batch_first = true;
     options.blank_label = 0;
+    options.fastemit_lambda = 0;
     options.num_threads = 1;
 
     size_t cpu_alloc_bytes;

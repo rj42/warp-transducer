@@ -78,7 +78,7 @@ See the main WarpRNNT documentation for more information.
 
 ## Python interface
 ```python
-def rnnt_loss(acts, labels, input_lengths, label_lengths, blank_label=0):
+def rnnt_loss(acts, labels, input_lengths, label_lengths, blank_label=0, fastemit_lambda=0):
     '''Computes the RNNT loss between a sequence of activations and a
     ground truth labeling.
     Args:
@@ -96,6 +96,7 @@ def rnnt_loss(acts, labels, input_lengths, label_lengths, blank_label=0):
                        for each example in the minibatch.
         blank_label: int, the label value/index that the RNNT
                      calculation should use as the blank label
+        fastemit_lambda: float, FastEmit regularization (https://arxiv.org/abs/2010.11148)
     Returns:
         1-D float Tensor, the cost of each example in the minibatch
         (as negative log probabilities).
