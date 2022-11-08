@@ -158,6 +158,30 @@ __global__ void compute_grad_kernel(Tp* grads, const Tp* const acts, const Tp* c
 
     // See: https://github.com/titu1994/warprnnt_numba/blob/b1bc81e02dfb05143c3d55ac7b50c8131e85b194/warprnnt_numba/rnnt_loss/utils/cuda_utils/gpu_rnnt_kernel.py#L264
     //
+    // d(logsoftmax(x_i), x_k) = δik - p_k, where p_k = softmax(x_k)
+    //
+    // d(L(logsoftmax(x)), x_k) = Σdi(L) * d(logsoftmax(x_i), x_k)  = Σdi(L) * (δik - p_k) = Σg_i * (δik - p_k)
+    //
+    // d(L, log(p(i|t, u))) = -a(t, u) * p(i|t, u) / p(y*|x) * a(t, u) * (I(i == y_u+1) * (1 + λ) * b(t, u + 1)) + I(i == ∅) * b(t + 1, u)) = g_i
+    //
+    // y(t, u) = p(y_u+1 | t, u)
+    // ∅(t, u) = p(∅ | t, u)
+    //
+    // d(L, x_k) =
+    //      -a(t, u) * p(k|t, u) / p(y*|x) * a(t, u) * (
+    //          - ((1 + λ) * b(t, u + 1) * y_u + b(t + 1, u) * p_∅))  // expanded sum of I(k == y_u+1) and I(k == ∅) with p_k
+    //          + (1 + λ) * I(k == y_u+1) * b(t, u + 1)
+    //     ) =
+    //      -a(t, u) * p(k|t, u) / p(y*|x) * a(t, u) * (
+    //          - b(t, u)                                               // by definiton of b(t, u)
+    //          + λ * b(t, u + 1) * p_u+1
+    //          + (1 + λ) * I(k, y_u) * b(t, u + 1))
+    //        )
+    //
+    // grad for non-labels = +a(t, u) * p(k|t, u) / p(y*|x) * (b(t, u) + λ * b(t, u + 1) * p_u+1)
+    // grad for labels     = -a(t, u) * p(k|t, u) / p(y*|x) * b(t, u + 1) * (1 + λ) + grad for non-labels  // p(k|t, u) = p_u+1
+    //
+    //
     if (t < T && u < U) {
         while (idx < alphabet_size) {
             Tp logpk = denom[col] + acts[col * alphabet_size + idx];
