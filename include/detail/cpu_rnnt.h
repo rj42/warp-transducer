@@ -106,7 +106,7 @@ private:
 };
 
 template<typename ProbT>
-CpuRNNT<ProbT>::CpuRNNT_metadata::CpuRNNT_metadata(int T, int U, void* workspace, size_t bytes_used, int blank, 
+CpuRNNT<ProbT>::CpuRNNT_metadata::CpuRNNT_metadata(int T, int U, void* workspace, size_t bytes_used, int blank,
                                         const int* const labels, const ProbT* const log_probs, CpuRNNT_index& idx) {
     
     alphas = reinterpret_cast<ProbT *>(static_cast<char *>(workspace) + bytes_used);
@@ -255,7 +255,6 @@ CpuRNNT<ProbT>::compute_betas_and_grad(ProbT* grad, const ProbT* const log_probs
     printf("\n");
 #endif
 
-
     ProbT loglike = betas[0];
 
     // Gradients w.r.t. log probabilities
@@ -312,7 +311,7 @@ CpuRNNT<ProbT>::cost_and_grad(const ProbT* const log_probs,
 
 template<typename ProbT>
 rnntStatus_t
-CpuRNNT<ProbT>::score_forward(const ProbT* const log_probs, 
+CpuRNNT<ProbT>::score_forward(const ProbT* const log_probs,
                             ProbT* costs,
                             const int* const flat_labels,
                             const int* const label_lengths,
