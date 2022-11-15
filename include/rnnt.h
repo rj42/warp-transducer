@@ -56,6 +56,9 @@ struct rnntOptions {
     /// FastEmit regularization (https://arxiv.org/abs/2010.11148)
     float fastemit_lambda;
 
+    /// Monotonic rrnt loss (https://ieeexplore.ieee.org/document/9003822)
+    bool monotonic;
+
     /// the maximum length of time steps
     int maxT;
 

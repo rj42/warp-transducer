@@ -14,14 +14,15 @@ import torch
 import torch.autograd as autograd
 import torch.nn as nn
 
-from warprnnt_pytorch import RNNTLoss
+#from warprnnt_pytorch import RNNTLoss
 from transducer_np import RNNTLoss as rnntloss
 
 parser = argparse.ArgumentParser(description='MXNet RNN Transducer Test.')
 parser.add_argument('--np', default=False, action='store_true', help='numpy loss')
 args = parser.parse_args()
 
-fn = rnntloss() if args.np else RNNTLoss(reduction='sum')
+#fn = rnntloss() if args.np else RNNTLoss(reduction='sum')
+fn = rnntloss()
 
 gpu = 1
 def wrap_and_call(acts, labels):
@@ -36,6 +37,7 @@ def wrap_and_call(acts, labels):
     labels = torch.IntTensor(labels)
     lengths = torch.IntTensor(lengths)
     label_lengths = torch.IntTensor(label_lengths)
+
     if use_cuda:
         labels = labels.cuda(gpu)
         lengths = lengths.cuda(gpu)
@@ -72,6 +74,7 @@ def small_test():
                                 0.12073959],
                                 [-0.6925882 ,  0.16871116,  0.18645467,  0.16871116,
                                 0.16871116]]]])
+
     assert np.allclose(cost, expected_cost, rtol=1e-6), \
         "small_test costs mismatch."
     assert np.allclose(grads, expected_grads), \
@@ -153,6 +156,7 @@ def big_test():
               [1, 1]]
 
     costs, grads = wrap_and_call(activations, labels)
+    #print(costs, ', '.join(map(str, grads.reshape(-1))))
 
     assert np.allclose(costs, sum(expected_costs)), \
         "big_test average costs mismatch."

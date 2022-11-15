@@ -59,7 +59,7 @@ rnntStatus_t compute_rnnt_loss(
     if (options.loc == RNNT_CPU) {
         CpuRNNT<float> rnnt(
             minibatch, options.maxT, options.maxU, alphabet_size, workspace,
-            options.blank_label, options.fastemit_lambda,
+            options.blank_label, options.fastemit_lambda, options.monotonic,
             options.num_threads, options.batch_first
         );
 
@@ -79,7 +79,7 @@ rnntStatus_t compute_rnnt_loss(
 #ifdef __CUDACC__
         GpuRNNT<float> rnnt(
             minibatch, options.maxT, options.maxU, alphabet_size, workspace,
-            options.blank_label, options.fastemit_lambda,
+            options.blank_label, options.fastemit_lambda, options.monotonic,
             options.num_threads, options.stream
         );
 
@@ -166,7 +166,7 @@ rnntStatus_t compute_rnnt_loss_fp64(
     if (options.loc == RNNT_CPU) {
         CpuRNNT<double> rnnt(
             minibatch, options.maxT, options.maxU, alphabet_size, workspace,
-            options.blank_label, options.fastemit_lambda,
+            options.blank_label, options.fastemit_lambda, options.monotonic,
             options.num_threads, options.batch_first
         );
 
@@ -186,7 +186,7 @@ rnntStatus_t compute_rnnt_loss_fp64(
 #ifdef __CUDACC__
         GpuRNNT<double> rnnt(
             minibatch, options.maxT, options.maxU, alphabet_size, workspace,
-            options.blank_label, options.fastemit_lambda,
+            options.blank_label, options.fastemit_lambda, options.monotonic,
             options.num_threads, options.stream
         );
 

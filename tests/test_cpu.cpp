@@ -15,10 +15,10 @@ bool small_test() {
     const int T = 2;
     const int U = 3;
 
-    std::vector<float> acts = {0.1, 0.6, 0.1, 0.1, 0.1, 0.1, 
-                                0.1, 0.6, 0.1, 0.1, 0.1, 0.1, 
-                                0.2, 0.8, 0.1, 0.1, 0.6, 0.1, 
-                                0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 
+    std::vector<float> acts = {0.1, 0.6, 0.1, 0.1, 0.1, 0.1,
+                                0.1, 0.6, 0.1, 0.1, 0.1, 0.1,
+                                0.2, 0.8, 0.1, 0.1, 0.6, 0.1,
+                                0.1, 0.1, 0.1, 0.1, 0.2, 0.1,
                                 0.1, 0.7, 0.1, 0.2, 0.1, 0.1};
     std::vector<float> log_probs(acts.size());
     softmax(acts.data(), alphabet_size, B * T * U, log_probs.data(), true);
@@ -40,6 +40,7 @@ bool small_test() {
     options.batch_first = true;
     options.blank_label = 0;
     options.fastemit_lambda = 0;
+    options.monotonic = false;
     options.num_threads = 1;
 
     size_t cpu_alloc_bytes;
@@ -124,6 +125,7 @@ bool options_test() {
     options.loc = RNNT_CPU;
     options.num_threads = 1;
     options.batch_first = true;
+    options.monotonic = false;
 
     size_t cpu_alloc_bytes;
     throw_on_error(get_workspace_size(T, L, minibatch,

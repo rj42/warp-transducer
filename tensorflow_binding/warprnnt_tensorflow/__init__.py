@@ -6,7 +6,7 @@ lib_file = imp.find_module('kernels', __path__)[1]
 _warprnnt = tf.load_op_library(lib_file)
 
 
-def rnnt_loss(acts, labels, input_lengths, label_lengths, blank_label=0, fastemit_lambda=0):
+def rnnt_loss(acts, labels, input_lengths, label_lengths, blank_label=0, fastemit_lambda=0, monotonic=False):
     '''Computes the RNNT loss between a sequence of activations and a
     ground truth labeling.
     Args:
@@ -24,6 +24,7 @@ def rnnt_loss(acts, labels, input_lengths, label_lengths, blank_label=0, fastemi
         blank_label: int, the label value/index that the RNNT
                      calculation should use as the blank label
         fastemit_lambda: float, FastEmit regularization (https://arxiv.org/abs/2010.11148).
+        monotonic: bool, use monotonic loss (https://ieeexplore.ieee.org/document/9003822).
     Returns:
         1-D float Tensor, the cost of each example in the minibatch
         (as negative log probabilities).
@@ -32,7 +33,7 @@ def rnnt_loss(acts, labels, input_lengths, label_lengths, blank_label=0, fastemi
     '''
     loss, _ = _warprnnt.warp_rnnt(
         acts, labels, input_lengths, label_lengths,
-        blank_label, fastemit_lambda
+        blank_label, fastemit_lambda, monotonic
     )
     return loss
 

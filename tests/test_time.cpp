@@ -44,6 +44,7 @@ bool run_test(int B, int T, int L, int A, int num_threads) {
     options.maxU = L + 1;
     options.blank_label = 0;
     options.fastemit_lambda = 0;
+    options.monotonic = false;
     options.batch_first = true;
     options.loc = RNNT_CPU;
     options.num_threads = num_threads;

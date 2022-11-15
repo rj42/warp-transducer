@@ -9,53 +9,69 @@ def _assert_no_grad(tensor):
         "mark other tensors as not requiring gradients"
 
 
-def forward_pass(log_probs, labels, blank):
+NEG_INF = -float("inf")
+
+
+def forward_pass(log_probs, labels, blank, monotonic):
     T, U, _ = log_probs.shape
     alphas = np.zeros((T, U), dtype='f')
+    m = 1 if monotonic else 0
 
     for t in range(1, T):
         alphas[t, 0] = alphas[t-1, 0] + log_probs[t-1, 0, blank]
 
     for u in range(1, U):
-        alphas[0, u] = alphas[0, u-1] + log_probs[0, u-1, labels[u-1]]
+        if monotonic:
+            alphas[0, u] = NEG_INF
+        else:
+            alphas[0, u] = alphas[0, u-1] + log_probs[0, u-1, labels[u-1]]
+
     for t in range(1, T):
         for u in range(1, U):
             no_emit = alphas[t-1, u] + log_probs[t-1, u, blank]
-            emit = alphas[t, u-1] + log_probs[t, u-1, labels[u-1]]
+            emit = alphas[t-m, u-1] + log_probs[t-m, u-1, labels[u-1]]
             alphas[t, u] = np.logaddexp(emit, no_emit)
 
     loglike = alphas[T-1, U-1] + log_probs[T-1, U-1, blank]
     return alphas, loglike
 
-def backward_pass(log_probs, labels, blank):
+def backward_pass(log_probs, labels, blank, monotonic):
     T, U, _ = log_probs.shape
     betas = np.zeros((T, U), dtype='f')
     betas[T-1, U-1] = log_probs[T-1, U-1, blank]
+    m = 1 if monotonic else 0
 
     for t in reversed(range(T-1)):
         betas[t, U-1] = betas[t+1, U-1] + log_probs[t, U-1, blank]
 
     for u in reversed(range(U-1)):
-        betas[T-1, u] = betas[T-1, u+1] + log_probs[T-1, u, labels[u]]
+        if monotonic:
+            betas[T-1, u] = NEG_INF
+        else:
+            betas[T-1, u] = betas[T-1, u+1] + log_probs[T-1, u, labels[u]]
 
     for t in reversed(range(T-1)):
         for u in reversed(range(U-1)):
             no_emit = betas[t+1, u] + log_probs[t, u, blank]
-            emit = betas[t, u+1] + log_probs[t, u, labels[u]]
+            emit = betas[t+m, u+1] + log_probs[t, u, labels[u]]
             betas[t, u] = np.logaddexp(emit, no_emit)
 
     return betas, betas[0, 0]
 
-def compute_gradient(log_probs, alphas, betas, labels, blank, fastemit_lambda):
+def compute_gradient(log_probs, alphas, betas, labels, blank, fastemit_lambda, monotonic):
     T, U, _ = log_probs.shape
     grads = np.full(log_probs.shape, -float("inf"))
+    m = 1 if monotonic else 0
     log_like = betas[0, 0]
 
     grads[T-1, U-1, blank] = alphas[T-1, U-1]
     grads[:T-1, :, blank] = alphas[:T-1, :] + betas[1:, :]
 
     for u, l in enumerate(labels):
-        grads[:, u, l] = alphas[:, u] + betas[:, u+1]
+        for t in range(T):
+            if t + m == T:
+                continue
+            grads[t, u, l] = alphas[t, u] + betas[t+m, u+1]
 
     grads = -np.exp(grads + log_probs - log_like)
 
@@ -66,7 +82,7 @@ def compute_gradient(log_probs, alphas, betas, labels, blank, fastemit_lambda):
 
     return grads
 
-def transduce(log_probs, labels, blank=0, fastemit_lambda=0):
+def transduce(log_probs, labels, blank=0, fastemit_lambda=0, monotonic=False):
     """
     Args:
         log_probs: 3D array with shape
@@ -77,19 +93,22 @@ def transduce(log_probs, labels, blank=0, fastemit_lambda=0):
         3D array: Gradients with respect to the
                     unnormalized input actications
     """
-    alphas, ll_forward = forward_pass(log_probs, labels, blank)
-    betas, ll_backward = backward_pass(log_probs, labels, blank)
-    grads = compute_gradient(log_probs, alphas, betas, labels, blank, fastemit_lambda)
+    alphas, ll_forward = forward_pass(log_probs, labels, blank, monotonic)
+    betas, ll_backward = backward_pass(log_probs, labels, blank, monotonic)
+    grads = compute_gradient(log_probs, alphas, betas, labels, blank, fastemit_lambda, monotonic)
     return -ll_forward, grads
 
-def transduce_batch(log_probs, labels, flen, glen, blank=0, fastemit_lambda=0):
+def transduce_batch(log_probs, labels, flen, glen, blank=0, fastemit_lambda=0, monotonic=False):
     grads = np.zeros_like(log_probs)
     costs = []
+
     # TODO parallel loop
     for b in range(log_probs.shape[0]):
         t = int(flen[b])
         u = int(glen[b]) + 1
-        ll, g = transduce(log_probs[b, :t, :u, :], labels[b, :u-1], blank, fastemit_lambda=0)
+        ll, g = transduce(log_probs[b, :t, :u, :], labels[b, :u-1], blank,
+            fastemit_lambda=fastemit_lambda, monotonic=monotonic
+        )
         grads[b, :t, :u, :] = g
         costs.append(ll)
     return costs, grads
@@ -98,8 +117,12 @@ class _RNNT(Function):
     @staticmethod
     def forward(ctx, acts, labels, act_lens, label_lens):
         is_cuda = True if acts.is_cuda else False
-        costs, grads = transduce_batch(acts.detach().cpu().numpy(), labels.cpu().numpy(),
-                            act_lens.cpu().numpy(), label_lens.cpu().numpy())
+        costs, grads = transduce_batch(
+            acts.detach().cpu().numpy(), labels.cpu().numpy(),
+            act_lens.cpu().numpy(), label_lens.cpu().numpy(),
+            fastemit_lambda=0,
+            monotonic=False,
+        )
 
         costs = torch.FloatTensor([sum(costs)])
         grads = torch.Tensor(grads).to(acts)

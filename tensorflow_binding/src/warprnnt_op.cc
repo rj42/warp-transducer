@@ -18,6 +18,7 @@ REGISTER_OP("WarpRNNT")
     .Input("label_lengths: int32")
     .Attr("blank_label: int = 0")
     .Attr("fastemit_lambda: float = 0")
+    .Attr("monotonic: bool = false")
     .Output("costs: float32")
     .Output("grads: float32")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
@@ -37,6 +38,7 @@ class WarpRNNTOpBase : public tf::OpKernel {
     explicit WarpRNNTOpBase(tf::OpKernelConstruction* ctx) : tf::OpKernel(ctx) {
         OP_REQUIRES_OK(ctx, ctx->GetAttr("blank_label", &blank_label_));
         OP_REQUIRES_OK(ctx, ctx->GetAttr("fastemit_lambda", &fastemit_lambda_));
+        OP_REQUIRES_OK(ctx, ctx->GetAttr("monotonic", &monotonic_));
     }
 
     void Compute(tf::OpKernelContext* ctx) override {
@@ -107,6 +109,7 @@ class WarpRNNTOpBase : public tf::OpKernel {
         auto options = create_options(ctx);
         options.blank_label = blank_label_;
         options.fastemit_lambda = fastemit_lambda_;
+        options.monotonic = monotonic_;
         options.maxT = max_time;
         options.maxU = max_u;
 
@@ -147,6 +150,7 @@ class WarpRNNTOpBase : public tf::OpKernel {
   private:
     int blank_label_;
     float fastemit_lambda_;
+    bool monotonic_;
     virtual void set_zero(tf::Tensor* t) = 0;
     virtual rnntOptions create_options(tf::OpKernelContext* ctx) = 0;
 };

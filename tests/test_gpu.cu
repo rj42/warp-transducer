@@ -45,6 +45,7 @@ bool small_test() {
     options.loc = RNNT_GPU;
     options.blank_label = 0;
     options.fastemit_lambda = 0;
+    options.monotonic = false;
     cudaStream_t stream;
     cudaStreamCreate(&stream);
     options.stream = stream;
@@ -150,6 +151,8 @@ bool options_test() {
     cudaStreamCreate(&stream);
     options.stream = stream;
     options.num_threads = 1;
+    options.fastemit_lambda = 0;
+    options.monotonic = false;
 
     float* acts_gpu;
     vector_to_gpu(acts_gpu, acts, stream);
@@ -173,7 +176,7 @@ bool options_test() {
 
     throw_on_error(compute_rnnt_loss(acts_gpu,
                                     grads_gpu,
-                                    label_gpu, 
+                                    label_gpu,
                                     label_length_gpu,
                                     input_length_gpu,
                                     alphabet_size,
@@ -223,6 +226,136 @@ bool options_test() {
     }
     return result;
 }
+
+bool monotonic_test() {
+    const int alphabet_size = 3;
+    const int T = 4;
+    const int L = 3;
+    const int minibatch = 2;
+
+    std::vector<float> acts = {0.065357, 0.787530, 0.081592, 0.529716, 0.750675, 0.754135,
+                                0.609764, 0.868140, 0.622532, 0.668522, 0.858039, 0.164539,
+                                0.989780, 0.944298, 0.603168, 0.946783, 0.666203, 0.286882,
+                                0.094184, 0.366674, 0.736168, 0.166680, 0.714154, 0.399400,
+                                0.535982, 0.291821, 0.612642, 0.324241, 0.800764, 0.524106,
+                                0.779195, 0.183314, 0.113745, 0.240222, 0.339470, 0.134160,
+                                0.505562, 0.051597, 0.640290, 0.430733, 0.829473, 0.177467,
+                                0.320700, 0.042883, 0.302803, 0.675178, 0.569537, 0.558474,
+                                0.083132, 0.060165, 0.107958, 0.748615, 0.943918, 0.486356,
+                                0.418199, 0.652408, 0.024243, 0.134582, 0.366342, 0.295830,
+                                0.923670, 0.689929, 0.741898, 0.250005, 0.603430, 0.987289,
+                                0.592606, 0.884672, 0.543450, 0.660770, 0.377128, 0.358021};
+    // std::vector<float> log_probs(acts.size());
+    // softmax(acts.data(), alphabet_size, minibatch * T * L, log_probs.data(), true);
+
+    std::vector<float> expected_grads = {
+        0.0063176905, -0.25571644, 0.24939875, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.084992185,
+        -0.13633762, 0.051345434, -0.14593755, 0.2759514, -0.13001384, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.16883233,
+         0.29189086, -0.46072322, -0.2122688, 0.08925384, 0.123014964, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.66707826,
+         0.36765885, 0.2994194, -0.07102895, -0.3406622, 0.4116911, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.15444079,
+         -0.2918697, 0.13742894, -0.09298043, -0.10135508, 0.19433554, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.20763135,
+         -0.45159328, 0.24396195, -0.17744718, 0.08641868, 0.09102852, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.59868693,
+         0.30220315, 0.29648378
+    };
+
+    // Calculate the expected scores analytically
+    std::vector<double> expected_scores(2);
+    expected_scores[0] = 3.06972;
+    expected_scores[1] = 3.2272;
+
+    std::vector<int> labels = {1, 2, 1, 1};
+
+    std::vector<int> label_lengths = {2, 2};
+
+    std::vector<int> lengths = {4, 4};
+
+    std::vector<float> grads(acts.size());
+    std::vector<float> scores(2);
+
+    rnntOptions options{};
+    options.maxT = T;
+    options.maxU = L;
+    options.loc = RNNT_GPU;
+    cudaStream_t stream;
+    cudaStreamCreate(&stream);
+    options.stream = stream;
+    options.num_threads = 1;
+    options.fastemit_lambda = 0;
+    options.monotonic = true;
+
+    float* acts_gpu;
+    vector_to_gpu(acts_gpu, acts, stream);
+    float* grads_gpu;
+    cudaMalloc(&grads_gpu, grads.size() * sizeof(float));
+    int* label_gpu;
+    vector_to_gpu(label_gpu, labels, stream);
+    int* label_length_gpu;
+    vector_to_gpu(label_length_gpu, label_lengths, stream);
+    int* input_length_gpu;
+    vector_to_gpu(input_length_gpu, lengths, stream);
+
+    size_t gpu_alloc_bytes;
+    throw_on_error(get_workspace_size(T, L, minibatch,
+                                      true,
+                                      &gpu_alloc_bytes),
+                   "Error: get_workspace_size in options_test");
+
+    void* rnnt_gpu_workspace;
+    cudaMalloc(&rnnt_gpu_workspace, gpu_alloc_bytes);
+
+    throw_on_error(compute_rnnt_loss(acts_gpu,
+                                    grads_gpu,
+                                    label_gpu,
+                                    label_length_gpu,
+                                    input_length_gpu,
+                                    alphabet_size,
+                                    lengths.size(),
+                                    scores.data(),
+                                    rnnt_gpu_workspace,
+                                    options),
+                   "Error: compute_rnnt_loss in small_test");
+
+    cudaMemcpyAsync(grads.data(), grads_gpu, grads.size() * sizeof(float), cudaMemcpyDeviceToHost, stream);
+
+    cudaFree(rnnt_gpu_workspace);
+    cudaFree(acts_gpu);
+    cudaFree(grads_gpu);
+    cudaFree(label_gpu);
+    cudaFree(label_length_gpu);
+    cudaFree(input_length_gpu);
+
+    const double eps = 1e-4;
+
+    bool result = true;
+    // activations gradient check
+    for (int i = 0; i < grads.size(); i++) {
+        const double lb = expected_grads[i] - eps;
+        const double ub = expected_grads[i] + eps;
+        if (!(grads[i] > lb && grads[i] < ub)) {
+            std::cerr << "grad mismatch in options_test"
+                      << " expected grad: " << expected_grads[i]
+                      << " calculated score: " << grads[i]
+                      << " !(" << lb << " < " << grads[i]
+                      << " < " << ub << ")" << std::endl;
+            result = false;
+        }
+    }
+
+    for (int i = 0; i < 2; i++) {
+        const double lb = expected_scores[i] - eps;
+        const double ub = expected_scores[i] + eps;
+        if (!(scores[i] > lb && scores[i] < ub)) {
+            std::cerr << "score mismatch in options_test"
+                      << " expected score: " << expected_scores[i]
+                      << " calculated score: " << scores[i]
+                      << " !(" << lb << " < " << scores[i]
+                      << " < " << ub << ")" << std::endl;
+            result = false;
+        }
+    }
+    return result;
+}
+
 
 bool inf_test() {
     const int alphabet_size = 15;
@@ -487,6 +620,8 @@ int main(void) {
     printf("finish small_test %d\n", status);
     status &= options_test();
     printf("finish options_test %d\n", status);
+    status &= monotonic_test();
+    printf("finish monotonic_test %d\n", status);
     status &= inf_test();
     printf("finish inf_test %d\n", status);
     status &= run_tests();
